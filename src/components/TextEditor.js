@@ -61,7 +61,7 @@ const WordList = styled.div`
   border-top: 1px solid #e9ecef;
   font-size: 0.9rem;
   color: #495057;
-  display: ${props => props.hasMatches ? 'block' : 'none'};
+  display: ${props => props.hasmatches === 'true' ? 'block' : 'none'};
 `;
 
 const Tag = styled.span`
@@ -81,13 +81,13 @@ const MatchCount = styled.span`
 `;
 
 const TextEditor = () => {
-  const [content, setContent] = useState(() => {
-    const savedContent = localStorage.getItem('editorContent');
-    return savedContent !== null ? savedContent : DEFAULT_TEXT;
-  });
+  const [content, setContent] = useState('');
   const [wordList] = useState(defaultPatterns);
   const editorRef = useRef(null);
   const { html, matches } = useWordHighlight(content, wordList);
+  const [isClient, setIsClient] = useState(false);
+  const [selectionInfo, setSelectionInfo] = useState(null);
+  const isUpdatingRef = useRef(false);
 
   // Get unique patterns that have matches
   const matchedPatterns = [...new Set(matches.map(match => match.pattern))];
@@ -98,32 +98,33 @@ const TextEditor = () => {
     return acc;
   }, {});
 
-  const handleInput = (e) => {
-    const text = e.target.innerText;
-    setContent(text);
-    localStorage.setItem('editorContent', text);
-  };
-
-  useEffect(() => {
-    if (!editorRef.current) return;
-
+  // Save selection position before input
+  const saveSelection = () => {
+    if (!isClient || !editorRef.current) return;
+    
     const selection = window.getSelection();
     if (!selection.rangeCount) return;
-
-    const originalRange = selection.getRangeAt(0);
-    const isEditorSelected = editorRef.current.contains(originalRange.commonAncestorContainer);
-    if (!isEditorSelected) return;
-
-    // Calculate the relative cursor position before updating content
-    const preCaretRange = originalRange.cloneRange();
+    
+    const range = selection.getRangeAt(0);
+    if (!editorRef.current.contains(range.commonAncestorContainer)) return;
+    
+    // Calculate caret position
+    const preCaretRange = range.cloneRange();
     preCaretRange.selectNodeContents(editorRef.current);
-    preCaretRange.setEnd(originalRange.endContainer, originalRange.endOffset);
+    preCaretRange.setEnd(range.endContainer, range.endOffset);
     const caretOffset = preCaretRange.toString().length;
+    
+    setSelectionInfo({ offset: caretOffset });
+  };
 
-    // Update content
-    editorRef.current.innerHTML = html;
-
-    // Restore cursor position
+  // Restore selection after content update
+  const restoreSelection = () => {
+    if (!isClient || !editorRef.current || !selectionInfo) return;
+    
+    const selection = window.getSelection();
+    const { offset } = selectionInfo;
+    
+    // Find the right text node and position
     const textNodes = [];
     const walker = document.createTreeWalker(
       editorRef.current,
@@ -131,27 +132,27 @@ const TextEditor = () => {
       null,
       false
     );
-
+    
     let node;
     while ((node = walker.nextNode())) {
       textNodes.push(node);
     }
-
+    
     let currentOffset = 0;
     let targetNode = null;
     let targetOffset = 0;
-
+    
     // Find the text node and offset where the cursor should be placed
     for (const node of textNodes) {
       const nodeLength = node.textContent.length;
-      if (currentOffset + nodeLength >= caretOffset) {
+      if (currentOffset + nodeLength >= offset) {
         targetNode = node;
-        targetOffset = caretOffset - currentOffset;
+        targetOffset = offset - currentOffset;
         break;
       }
       currentOffset += nodeLength;
     }
-
+    
     if (targetNode) {
       try {
         const range = document.createRange();
@@ -163,27 +164,58 @@ const TextEditor = () => {
         console.warn('Could not restore cursor position:', e);
       }
     }
-  }, [html]);
+  };
+
+  const handleInput = (e) => {
+    if (isUpdatingRef.current) return;
+    
+    saveSelection();
+    const text = e.target.innerText;
+    setContent(text);
+    localStorage.setItem('editorContent', text);
+  };
+
+  // Initialize content from localStorage only on client-side
+  useEffect(() => {
+    setIsClient(true);
+    const savedContent = localStorage.getItem('editorContent');
+    setContent(savedContent !== null ? savedContent : DEFAULT_TEXT);
+  }, []);
+
+  // Update editor content and restore selection
+  useEffect(() => {
+    if (!editorRef.current || !isClient || !content) return;
+    
+    isUpdatingRef.current = true;
+    editorRef.current.innerHTML = html;
+    
+    // Restore cursor position after DOM update
+    setTimeout(() => {
+      restoreSelection();
+      isUpdatingRef.current = false;
+    }, 0);
+  }, [html, isClient]);
 
   // Set initial content
   useEffect(() => {
-    if (editorRef.current) {
+    if (editorRef.current && isClient && content && !selectionInfo) {
       editorRef.current.innerHTML = html;
     }
-  }, []);
+  }, [isClient]);
+
+  if (!isClient) {
+    return <EditorContainer>Loading editor...</EditorContainer>;
+  }
 
   return (
     <EditorContainer>
-      {/* <EditorHeader>
-        <EditorTitle>Elegant Text Editor</EditorTitle>
-      </EditorHeader> */}
       <EditorContent
         ref={editorRef}
         contentEditable
         onInput={handleInput}
         suppressContentEditableWarning
       />
-      <WordList hasMatches={matchedPatterns.length > 0}>
+      <WordList hasmatches={(matchedPatterns.length > 0).toString()}>
         <div>Found matches:</div>
         {matchedPatterns.map((pattern, index) => (
           <Tag key={index}>
