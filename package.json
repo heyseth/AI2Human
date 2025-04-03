@@ -9,7 +9,7 @@
     "build": "next build",
     "start": "next start",
     "predeploy": "npm run build",
-    "deploy": "gh-pages -d out",
+    "deploy": "bash deploy.sh",
     "export": "next export"
   },
   "dependencies": {
