@@ -88,6 +88,7 @@ const TextEditor = () => {
   const [isClient, setIsClient] = useState(false);
   const [selectionInfo, setSelectionInfo] = useState(null);
   const isUpdatingRef = useRef(false);
+  const [history, setHistory] = useState({ past: [], future: [] });
 
   // Get unique patterns that have matches
   const matchedPatterns = [...new Set(matches.map(match => match.pattern))];
@@ -171,8 +172,55 @@ const TextEditor = () => {
     
     saveSelection();
     const text = e.target.innerText;
+    
+    // Save current state to history before updating
+    setHistory(prev => ({
+      past: [...prev.past, content],
+      future: []
+    }));
+    
     setContent(text);
     localStorage.setItem('editorContent', text);
+  };
+
+  const undo = () => {
+    if (history.past.length === 0) return;
+    
+    const previous = history.past[history.past.length - 1];
+    const newPast = history.past.slice(0, -1);
+    
+    setHistory(prev => ({
+      past: newPast,
+      future: [content, ...prev.future]
+    }));
+    
+    setContent(previous);
+    localStorage.setItem('editorContent', previous);
+  };
+
+  const redo = () => {
+    if (history.future.length === 0) return;
+    
+    const next = history.future[0];
+    const newFuture = history.future.slice(1);
+    
+    setHistory(prev => ({
+      past: [...prev.past, content],
+      future: newFuture
+    }));
+    
+    setContent(next);
+    localStorage.setItem('editorContent', next);
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.ctrlKey && e.key === 'z') {
+      e.preventDefault();
+      undo();
+    } else if (e.ctrlKey && e.key === 'y') {
+      e.preventDefault();
+      redo();
+    }
   };
 
   // Initialize content from localStorage only on client-side
@@ -213,6 +261,7 @@ const TextEditor = () => {
         ref={editorRef}
         contentEditable
         onInput={handleInput}
+        onKeyDown={handleKeyDown}
         suppressContentEditableWarning
       />
       <WordList hasmatches={(matchedPatterns.length > 0).toString()}>
