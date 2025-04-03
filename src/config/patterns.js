@@ -1,4 +1,5 @@
 export const defaultPatterns = [
+"—",
 "a * and rapidly evolving",
 "a * blend of",
 "a * component of",

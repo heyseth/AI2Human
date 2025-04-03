@@ -115,7 +115,14 @@ const TextEditor = () => {
     preCaretRange.setEnd(range.endContainer, range.endOffset);
     const caretOffset = preCaretRange.toString().length;
     
-    setSelectionInfo({ offset: caretOffset });
+    // Store additional info about newlines before cursor
+    const textBeforeCursor = preCaretRange.toString();
+    const newlineCount = (textBeforeCursor.match(/\n/g) || []).length;
+    
+    setSelectionInfo({
+      offset: caretOffset,
+      newlines: newlineCount
+    });
   };
 
   // Restore selection after content update
@@ -220,6 +227,25 @@ const TextEditor = () => {
     } else if (e.ctrlKey && e.key === 'y') {
       e.preventDefault();
       redo();
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      
+      // Get current selection
+      const selection = window.getSelection();
+      const range = selection.getRangeAt(0);
+      
+      // Insert newline
+      const textNode = document.createTextNode('\n');
+      range.insertNode(textNode);
+      
+      // Move cursor after newline
+      range.setStartAfter(textNode);
+      range.setEndAfter(textNode);
+      selection.removeAllRanges();
+      selection.addRange(range);
+      
+      // Trigger input handler to update content
+      handleInput({ target: editorRef.current });
     }
   };
 
